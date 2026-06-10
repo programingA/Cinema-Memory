@@ -15,7 +15,13 @@ import type {
   UserRole
 } from "@/lib/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const LOCAL_API_BASE_URL = "http://localhost:8080";
+const PRODUCTION_API_BASE_URL = "http://cinema-memory-api-alb-225083117.us-east-1.elb.amazonaws.com";
+
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "production" ? PRODUCTION_API_BASE_URL : LOCAL_API_BASE_URL)
+).replace(/\/$/, "");
 
 export class ApiError extends Error {
   status: number;

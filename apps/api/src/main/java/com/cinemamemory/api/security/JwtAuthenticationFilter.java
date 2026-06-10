@@ -6,6 +6,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
+import java.util.Set;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -14,12 +16,34 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private static final Set<String> SKIPPED_PATHS = Set.of(
+            "/auth/signup",
+            "/auth/login",
+            "/auth/refresh",
+            "/swagger-ui.html",
+            "/actuator/health",
+            "/debug/version"
+    );
+    private static final List<String> SKIPPED_PREFIXES = List.of(
+            "/swagger-ui/",
+            "/v3/api-docs/",
+            "/uploads/media/",
+            "/oauth2/",
+            "/login/oauth2/"
+    );
+
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
     public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return SKIPPED_PATHS.contains(path) || SKIPPED_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
     @Override

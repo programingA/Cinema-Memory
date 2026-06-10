@@ -242,11 +242,12 @@ export function LoginPanel({ onSuccess }: Props) {
       </div>
 
       <div className="mt-4 border-t border-white/10 pt-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">OAuth</p>
+        <div className="mb-3 flex items-center gap-3">
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="text-xs font-semibold text-stone-500">소셜 계정으로 계속하기</span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
         <OAuthButtons />
-        <p className="mt-3 text-xs leading-5 text-stone-400">
-          Google/Kakao OAuth 앱의 redirect URI는 백엔드 주소 기준 <code>/login/oauth2/code/&#123;provider&#125;</code>로 설정해야 합니다.
-        </p>
       </div>
     </section>
   );

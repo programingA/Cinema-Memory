@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #11100f;
+  color: #fafaf9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(135deg, #11100f 0%, #1c1917 48%, #0c0a09 100%);
+  background-size: 72px 72px, auto;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.film-perforation {
+  background-image: radial-gradient(circle, rgba(250, 250, 249, 0.7) 0 32%, transparent 34%);
+  background-size: 28px 28px;
+}
+
+.curtain-bg {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(127, 29, 29, 0.22) 0,
+      rgba(127, 29, 29, 0.22) 18px,
+      rgba(20, 18, 16, 0.2) 18px,
+      rgba(20, 18, 16, 0.2) 36px
+    ),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.14) 45%, rgba(0, 0, 0, 0.72));
+  mask-image: linear-gradient(to bottom, black 0 78%, transparent 100%);
+}
+
+.projector-sweep {
+  background: linear-gradient(90deg, transparent, rgba(246, 211, 101, 0.18), transparent);
+  filter: blur(18px);
+  transform-origin: center top;
+  animation: projectorSweep 7s ease-in-out infinite;
+}
+
+.screen-frame {
+  transform-style: preserve-3d;
+  animation: screenFloat 5.5s ease-in-out infinite;
+}
+
+.film-strip {
+  background-image: radial-gradient(circle, rgba(250, 250, 249, 0.74) 0 30%, transparent 33%);
+  background-size: 20px 24px;
+  background-position: center;
+  animation: filmRoll 2.8s linear infinite;
+}
+
+@keyframes projectorSweep {
+  0%,
+  100% {
+    transform: translateX(-50%) skewX(-12deg);
+    opacity: 0.42;
+  }
+  50% {
+    transform: translateX(-46%) skewX(10deg);
+    opacity: 0.82;
+  }
+}
+
+@keyframes screenFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotateX(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotateX(1.5deg);
+  }
+}
+
+@keyframes filmRoll {
+  from {
+    background-position-y: 0;
+  }
+  to {
+    background-position-y: 48px;
+  }
+}

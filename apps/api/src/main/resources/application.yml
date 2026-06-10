@@ -1,0 +1,62 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cinema-memory-api
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/cinema_memory?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:cinema}
+    password: ${DB_PASSWORD:cinema}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:oauth-google-disabled}
+            client-secret: ${GOOGLE_CLIENT_SECRET:oauth-google-disabled}
+            scope: openid,email,profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID:oauth-kakao-disabled}
+            client-secret: ${KAKAO_CLIENT_SECRET:oauth-kakao-disabled}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-authentication-method: client_secret_post
+            scope: profile_nickname,account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  admin:
+    email: ${ADMIN_EMAIL:admin@naver.com}
+    password: ${ADMIN_PASSWORD:12345678}
+    display-name: ${ADMIN_DISPLAY_NAME:Administrator}
+  jwt:
+    issuer: cinema-memory
+    secret: ${JWT_SECRET:change-this-secret-to-at-least-256-bits-before-production}
+    access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+    refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:14}
+  aws:
+    region: ${AWS_REGION:ap-northeast-2}
+    s3-bucket: ${S3_BUCKET:cinema-memory-dev}
+    cloudfront-base-url: ${CLOUDFRONT_BASE_URL:}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui/index.html

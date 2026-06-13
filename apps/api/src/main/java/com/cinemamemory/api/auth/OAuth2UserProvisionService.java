@@ -1,7 +1,9 @@
 package com.cinemamemory.api.auth;
 
+import com.cinemamemory.api.common.InputSanitizer;
 import com.cinemamemory.api.user.User;
 import com.cinemamemory.api.user.UserRepository;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -32,14 +34,15 @@ public class OAuth2UserProvisionService extends DefaultOAuth2UserService {
 
         oauthAccountRepository.findByProviderAndProviderUserId(provider, profile.providerUserId())
                 .orElseGet(() -> {
-                    User user = userRepository.findByEmail(profile.email())
+                    String email = profile.email().trim().toLowerCase(Locale.ROOT);
+                    User user = userRepository.findByEmailIgnoreCase(email)
                             .orElseGet(() -> userRepository.save(new User(
-                                    profile.email(),
+                                    email,
                                     null,
-                                    profile.displayName(),
+                                    InputSanitizer.requiredPlainText(profile.displayName(), "Display name", 120),
                                     profile.avatarUrl()
                             )));
-                    return oauthAccountRepository.save(new OAuthAccount(user, provider, profile.providerUserId(), profile.email()));
+                    return oauthAccountRepository.save(new OAuthAccount(user, provider, profile.providerUserId(), email));
                 });
 
         return oauth2User;

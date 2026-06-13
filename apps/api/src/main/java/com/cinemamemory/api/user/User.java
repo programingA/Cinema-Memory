@@ -35,6 +35,10 @@ public class User {
     @Column(nullable = false)
     private UserRole role = UserRole.USER;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserStatus status = UserStatus.ACTIVE;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -92,6 +96,14 @@ public class User {
         return role;
     }
 
+    public UserStatus getStatus() {
+        return status;
+    }
+
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -107,5 +119,9 @@ public class User {
 
     public void updateRole(UserRole role) {
         this.role = role;
+    }
+
+    public void updateStatus(UserStatus status) {
+        this.status = status;
     }
 }

@@ -44,7 +44,31 @@ type Props = {
   editFilmId?: number;
 };
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024;
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const ALLOWED_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "video/quicktime"
+]);
+
+const MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {
+  gif: "image/gif",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  mp4: "video/mp4",
+  ogg: "video/ogg",
+  png: "image/png",
+  webm: "video/webm",
+  webp: "image/webp"
+};
 
 const emptyScene = (): SceneDraft => ({
   title: "",
@@ -67,21 +91,22 @@ function FieldError({ message }: { message?: string }) {
   return message ? <span className="text-xs font-medium text-red-400">{message}</span> : null;
 }
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 function mediaLabel(dataUrl: string) {
   if (!dataUrl) {
     return "";
   }
 
   return dataUrl.startsWith("data:video/") ? "기존 동영상" : "기존 이미지";
+}
+
+function inferMediaType(file: File) {
+  const browserType = file.type.trim().toLowerCase();
+  if (ALLOWED_MEDIA_TYPES.has(browserType)) {
+    return browserType === "image/jpg" ? "image/jpeg" : browserType;
+  }
+
+  const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
+  return MEDIA_TYPE_BY_EXTENSION[extension];
 }
 
 export function CreateFilmClient({ editFilmId }: Props) {
@@ -180,17 +205,18 @@ export function CreateFilmClient({ editFilmId }: Props) {
     )));
   }
 
-  async function onFileChange(index: number, event: ChangeEvent<HTMLInputElement>) {
+  function onFileChange(index: number, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+    const mediaType = inferMediaType(file);
+    if (!mediaType) {
       setErrors((current) => ({
         ...current,
         scenes: scenes.map((_, sceneIndex) => sceneIndex === index
-          ? { ...(current.scenes?.[sceneIndex] ?? {}), media: "이미지 또는 동영상 파일만 업로드할 수 있습니다." }
+          ? { ...(current.scenes?.[sceneIndex] ?? {}), media: "JPG, PNG, GIF, WebP 이미지 또는 MP4, MOV, WebM, OGG 동영상만 업로드할 수 있습니다." }
           : current.scenes?.[sceneIndex] ?? {})
       }));
       return;
@@ -200,15 +226,14 @@ export function CreateFilmClient({ editFilmId }: Props) {
       setErrors((current) => ({
         ...current,
         scenes: scenes.map((_, sceneIndex) => sceneIndex === index
-          ? { ...(current.scenes?.[sceneIndex] ?? {}), media: "프로토타입 저장소 제한 때문에 2MB 이하 파일만 업로드해주세요." }
+          ? { ...(current.scenes?.[sceneIndex] ?? {}), media: "미디어 파일은 50MB 이하만 업로드할 수 있습니다." }
           : current.scenes?.[sceneIndex] ?? {})
       }));
       return;
     }
 
-    const mediaDataUrl = await readFileAsDataUrl(file);
     updateScene(index, {
-      mediaDataUrl,
+      mediaDataUrl: `selected:${mediaType}:${file.name}`,
       mediaName: file.name,
       mediaFile: file
     });
@@ -499,7 +524,7 @@ export function CreateFilmClient({ editFilmId }: Props) {
                           <ImagePlus size={18} className="text-stone-500" />
                           <input
                             type="file"
-                            accept="image/*,video/*"
+                            accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.m4v,.webm,.ogg,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/ogg,video/quicktime"
                             onChange={(event) => void onFileChange(index, event)}
                             className="w-full text-sm text-stone-300 file:mr-3 file:rounded file:border-0 file:bg-projector file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-stone-950"
                           />

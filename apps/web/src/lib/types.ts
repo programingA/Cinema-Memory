@@ -33,19 +33,21 @@ export type AuthTokens = {
 };
 
 export type MeResponse = {
-  id: number;
   email: string;
   displayName: string;
   avatarUrl?: string | null;
   role: UserRole;
+  status: UserStatus;
   admin: boolean;
 };
 
 export type UserRole = "USER" | "ADMIN";
+export type UserStatus = "ACTIVE" | "SUSPENDED";
 
 export type AdminSummary = {
   userCount: number;
   adminCount: number;
+  suspendedCount: number;
   filmCount: number;
   sceneCount: number;
   mediaCount: number;
@@ -57,6 +59,7 @@ export type AdminUser = {
   displayName: string;
   avatarUrl?: string | null;
   role: UserRole;
+  status: UserStatus;
   createdAt: string;
 };
 

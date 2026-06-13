@@ -1,6 +1,7 @@
 package com.cinemamemory.api.film;
 
 import com.cinemamemory.api.common.ApiException;
+import com.cinemamemory.api.common.InputSanitizer;
 import com.cinemamemory.api.film.FilmDtos.FilmRequest;
 import com.cinemamemory.api.film.FilmDtos.FilmResponse;
 import com.cinemamemory.api.film.FilmDtos.PlaybackResponse;
@@ -37,14 +38,25 @@ public class FilmService {
     public FilmResponse createFilm(Long userId, FilmRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
-        Film film = filmRepository.save(new Film(user, request.title(), request.description(), request.coverImageUrl(), request.mood()));
+        Film film = filmRepository.save(new Film(
+                user,
+                InputSanitizer.requiredPlainText(request.title(), "Film title", 160),
+                InputSanitizer.optionalPlainText(request.description(), "Film description", 1000),
+                InputSanitizer.optionalMediaUrl(request.coverImageUrl()),
+                InputSanitizer.optionalPlainText(request.mood(), "Film mood", 80)
+        ));
         return FilmResponse.from(film);
     }
 
     @Transactional
     public FilmResponse updateFilm(Long userId, Long filmId, FilmRequest request) {
         Film film = findFilm(filmId, userId);
-        film.update(request.title(), request.description(), request.coverImageUrl(), request.mood());
+        film.update(
+                InputSanitizer.requiredPlainText(request.title(), "Film title", 160),
+                InputSanitizer.optionalPlainText(request.description(), "Film description", 1000),
+                InputSanitizer.optionalMediaUrl(request.coverImageUrl()),
+                InputSanitizer.optionalPlainText(request.mood(), "Film mood", 80)
+        );
         return FilmResponse.from(film);
     }
 
@@ -74,11 +86,11 @@ public class FilmService {
         Film film = findFilm(filmId, userId);
         MemoryScene scene = sceneRepository.save(new MemoryScene(
                 film,
-                request.title(),
-                request.body(),
+                InputSanitizer.requiredPlainText(request.title(), "Scene title", 160),
+                InputSanitizer.requiredPlainText(request.body(), "Scene body", 10000),
                 request.memoryDate(),
-                request.location(),
-                request.mood(),
+                InputSanitizer.optionalPlainText(request.location(), "Scene location", 255),
+                InputSanitizer.optionalPlainText(request.mood(), "Scene mood", 80),
                 request.sortOrder()
         ));
         return SceneResponse.from(scene);
@@ -89,7 +101,14 @@ public class FilmService {
         MemoryScene scene = sceneRepository.findByIdAndFilmUserId(sceneId, userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scene not found"));
         ensureSceneBelongsToFilm(scene, filmId);
-        scene.update(request.title(), request.body(), request.memoryDate(), request.location(), request.mood(), request.sortOrder());
+        scene.update(
+                InputSanitizer.requiredPlainText(request.title(), "Scene title", 160),
+                InputSanitizer.requiredPlainText(request.body(), "Scene body", 10000),
+                request.memoryDate(),
+                InputSanitizer.optionalPlainText(request.location(), "Scene location", 255),
+                InputSanitizer.optionalPlainText(request.mood(), "Scene mood", 80),
+                request.sortOrder()
+        );
         return SceneResponse.from(scene);
     }
 

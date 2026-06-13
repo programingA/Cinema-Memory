@@ -36,4 +36,13 @@ public final class MediaDtos {
             String cdnUrl
     ) {
     }
+
+    public record S3MigrationResponse(
+            int scanned,
+            int uploaded,
+            int cleared,
+            int skipped,
+            int failed
+    ) {
+    }
 }

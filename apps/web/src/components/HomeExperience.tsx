@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Clapperboard, Film, Projector, Sparkles } from "lucide-react";
 import { FilmCard } from "@/components/FilmCard";
+import { getAccessToken, verifyAuthSession } from "@/lib/auth";
 import { demoFilms } from "@/lib/mock-data";
 
 const stats = [
@@ -17,6 +19,34 @@ function openLoginModal() {
 }
 
 export function HomeExperience() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncAuth = () => {
+      if (!getAccessToken()) {
+        setIsLoggedIn(false);
+        return;
+      }
+
+      void verifyAuthSession().then((me) => {
+        if (!cancelled) {
+          setIsLoggedIn(Boolean(me));
+        }
+      });
+    };
+
+    syncAuth();
+    window.addEventListener("storage", syncAuth);
+    window.addEventListener("cinema-memory:auth-changed", syncAuth);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", syncAuth);
+      window.removeEventListener("cinema-memory:auth-changed", syncAuth);
+    };
+  }, []);
+
   return (
     <main className="min-h-screen overflow-hidden">
       <section className="relative border-b border-white/10">
@@ -42,8 +72,13 @@ export function HomeExperience() {
             <div className="mt-8 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={openLoginModal}
-                className="inline-flex items-center gap-2 rounded-md bg-projector px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+                disabled={isLoggedIn}
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    openLoginModal();
+                  }
+                }}
+                className="inline-flex items-center gap-2 rounded-md bg-projector px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-projector"
               >
                 이메일로 시작
                 <ArrowRight size={16} />

@@ -3,6 +3,7 @@ package com.cinemamemory.api.auth;
 import com.cinemamemory.api.config.AppProperties;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -32,5 +33,17 @@ public class RefreshTokenService {
 
     public void revoke(String token) {
         redisTemplate.delete(PREFIX + token);
+    }
+
+    public void revokeAllForUser(Long userId) {
+        Set<String> keys = redisTemplate.keys(PREFIX + "*");
+        if (keys == null || keys.isEmpty()) {
+            return;
+        }
+
+        String expectedUserId = String.valueOf(userId);
+        keys.stream()
+                .filter(key -> expectedUserId.equals(redisTemplate.opsForValue().get(key)))
+                .forEach(redisTemplate::delete);
     }
 }

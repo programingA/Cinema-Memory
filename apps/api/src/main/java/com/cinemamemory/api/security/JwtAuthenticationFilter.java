@@ -20,13 +20,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             "/auth/signup",
             "/auth/login",
             "/auth/refresh",
-            "/swagger-ui.html",
             "/actuator/health",
             "/debug/version"
     );
     private static final List<String> SKIPPED_PREFIXES = List.of(
-            "/swagger-ui/",
-            "/v3/api-docs/",
             "/uploads/media/",
             "/oauth2/",
             "/login/oauth2/"
@@ -57,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             Long userId = jwtService.parseUserId(header.substring(7));
-            userRepository.findById(userId).ifPresent(user -> {
+            userRepository.findById(userId).filter(user -> user.isActive()).ifPresent(user -> {
                 UserPrincipal principal = UserPrincipal.from(user);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());

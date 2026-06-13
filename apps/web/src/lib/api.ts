@@ -12,16 +12,69 @@ import type {
   SceneRequest,
   MemoryScene,
   SignupRequest,
-  UserRole
+  UserRole,
+  UserStatus
 } from "@/lib/types";
 
 const LOCAL_API_BASE_URL = "http://localhost:8080";
-const PRODUCTION_API_BASE_URL = "http://cinema-memory-api-alb-225083117.us-east-1.elb.amazonaws.com";
+const PRODUCTION_API_BASE_URL = "/api/backend";
+
+function getConfiguredApiBaseUrl() {
+  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  if (process.env.NODE_ENV === "production" && value.startsWith("http://")) {
+    return undefined;
+  }
+
+  return value;
+}
 
 const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  getConfiguredApiBaseUrl() ??
   (process.env.NODE_ENV === "production" ? PRODUCTION_API_BASE_URL : LOCAL_API_BASE_URL)
 ).replace(/\/$/, "");
+
+function normalizedRelativePath(url: string) {
+  return url.startsWith("/") ? url : `/${url}`;
+}
+
+function isAlreadyProxiedAssetUrl(url: string) {
+  return API_BASE_URL.startsWith("/")
+    && (url === API_BASE_URL || url.startsWith(`${API_BASE_URL}/`));
+}
+
+function toBackendAssetUrl(url?: string | null) {
+  if (!url) {
+    return url ?? undefined;
+  }
+
+  if (/^(data:|blob:)/i.test(url)) {
+    return undefined;
+  }
+
+  if (/^https?:/i.test(url)) {
+    return url;
+  }
+
+  const normalizedUrl = normalizedRelativePath(url);
+  const mediaPathIndex = normalizedUrl.indexOf("/uploads/media/");
+
+  if (mediaPathIndex >= 0) {
+    return normalizedUrl.slice(mediaPathIndex);
+  }
+
+  return normalizedUrl;
+}
+
+function normalizeFilmRequest<T extends FilmRequest>(payload: T): T {
+  return {
+    ...payload,
+    coverImageUrl: toBackendAssetUrl(payload.coverImageUrl)
+  };
+}
 
 export class ApiError extends Error {
   status: number;
@@ -44,7 +97,12 @@ function resolveAssetUrl(url?: string | null) {
     return url ?? undefined;
   }
 
-  return `${API_BASE_URL}${url.startsWith("/") ? url : `/${url}`}`;
+  const normalizedUrl = normalizedRelativePath(url);
+  if (isAlreadyProxiedAssetUrl(normalizedUrl)) {
+    return normalizedUrl;
+  }
+
+  return `${API_BASE_URL}${normalizedUrl}`;
 }
 
 function normalizeFilm(film: Film): Film {
@@ -111,7 +169,7 @@ export async function createFilm(accessToken: string, payload: FilmRequest): Pro
     headers: {
       Authorization: `Bearer ${accessToken}`
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(normalizeFilmRequest(payload))
   });
 }
 
@@ -121,7 +179,7 @@ export async function updateFilm(accessToken: string, filmId: number, payload: F
     headers: {
       Authorization: `Bearer ${accessToken}`
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(normalizeFilmRequest(payload))
   });
 }
 
@@ -254,6 +312,25 @@ export async function updateAdminUserRole(accessToken: string, userId: number, r
       Authorization: `Bearer ${accessToken}`
     },
     body: JSON.stringify({ role })
+  });
+}
+
+export async function updateAdminUserStatus(accessToken: string, userId: number, status: UserStatus): Promise<AdminUser> {
+  return request<AdminUser>(`/admin/users/${userId}/status`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ status })
+  });
+}
+
+export async function deleteAdminUser(accessToken: string, userId: number): Promise<void> {
+  return request<void>(`/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
   });
 }
 

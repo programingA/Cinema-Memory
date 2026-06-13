@@ -1,5 +1,6 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -14,6 +15,10 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${MEDIA_MAX_FILE_SIZE:50MB}
+      max-request-size: ${MEDIA_MAX_REQUEST_SIZE:55MB}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -54,9 +59,20 @@ app:
     refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:14}
   aws:
     region: ${AWS_REGION:ap-northeast-2}
-    s3-bucket: ${S3_BUCKET:cinema-memory-dev}
+    s3-bucket: ${MEDIA_S3_BUCKET:${S3_BUCKET:cinema-memory-dev}}
+    s3-prefix: ${MEDIA_S3_PREFIX:uploads/media}
     cloudfront-base-url: ${CLOUDFRONT_BASE_URL:}
+  security:
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    require-https: ${APP_REQUIRE_HTTPS:false}
+    signup-rate-limit-per-minute: ${SIGNUP_RATE_LIMIT_PER_MINUTE:5}
+  media:
+    max-upload-bytes: ${MEDIA_MAX_UPLOAD_BYTES:52428800}
+    storage-mode: ${MEDIA_STORAGE_MODE:s3}
 
 springdoc:
+  api-docs:
+    enabled: ${OPENAPI_ENABLED:false}
   swagger-ui:
+    enabled: ${OPENAPI_ENABLED:false}
     path: /swagger-ui/index.html

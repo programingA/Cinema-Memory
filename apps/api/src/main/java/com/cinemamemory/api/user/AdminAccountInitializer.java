@@ -36,7 +36,7 @@ public class AdminAccountInitializer implements ApplicationRunner {
         String email = admin.email().trim().toLowerCase(Locale.ROOT);
         String displayName = StringUtils.hasText(admin.displayName()) ? admin.displayName().trim() : "Administrator";
 
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseGet(() -> userRepository.save(new User(
                         email,
                         passwordEncoder.encode(admin.password()),

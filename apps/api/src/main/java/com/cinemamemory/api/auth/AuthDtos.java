@@ -33,6 +33,6 @@ public final class AuthDtos {
         }
     }
 
-    public record MeResponse(Long id, String email, String displayName, String avatarUrl, String role, boolean admin) {
+    public record MeResponse(String email, String displayName, String avatarUrl, String role, String status, boolean admin) {
     }
 }

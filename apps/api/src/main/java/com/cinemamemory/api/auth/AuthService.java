@@ -5,10 +5,13 @@ import com.cinemamemory.api.auth.AuthDtos.MeResponse;
 import com.cinemamemory.api.auth.AuthDtos.SignupRequest;
 import com.cinemamemory.api.auth.AuthDtos.TokenResponse;
 import com.cinemamemory.api.common.ApiException;
+import com.cinemamemory.api.common.InputSanitizer;
 import com.cinemamemory.api.security.JwtService;
 import com.cinemamemory.api.user.User;
 import com.cinemamemory.api.user.UserRepository;
 import com.cinemamemory.api.user.UserRole;
+import java.util.Locale;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,26 +38,32 @@ public class AuthService {
 
     @Transactional
     public TokenResponse signup(SignupRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
+        String email = normalizeEmail(request.email());
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw signupFailed();
         }
 
-        User user = userRepository.save(new User(
-                request.email(),
-                passwordEncoder.encode(request.password()),
-                request.displayName(),
-                null
-        ));
-        return issueTokens(user);
+        try {
+            User user = userRepository.save(new User(
+                    email,
+                    passwordEncoder.encode(request.password()),
+                    InputSanitizer.requiredPlainText(request.displayName(), "Display name", 120),
+                    null
+            ));
+            return issueTokens(user);
+        } catch (DataIntegrityViolationException exception) {
+            throw signupFailed();
+        }
     }
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmailIgnoreCase(normalizeEmail(request.email()))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
+        ensureActive(user, HttpStatus.FORBIDDEN);
         return issueTokens(user);
     }
 
@@ -64,6 +73,7 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+        ensureActive(user, HttpStatus.UNAUTHORIZED);
 
         refreshTokenService.revoke(refreshToken);
         return issueTokens(user);
@@ -77,12 +87,13 @@ public class AuthService {
     public MeResponse me(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
+        ensureActive(user, HttpStatus.UNAUTHORIZED);
         return new MeResponse(
-                user.getId(),
                 user.getEmail(),
                 user.getDisplayName(),
                 user.getAvatarUrl(),
                 user.getRole().name(),
+                user.getStatus().name(),
                 user.getRole() == UserRole.ADMIN
         );
     }
@@ -91,5 +102,19 @@ public class AuthService {
         String accessToken = jwtService.issueAccessToken(user);
         String refreshToken = refreshTokenService.issue(user.getId());
         return TokenResponse.bearer(accessToken, refreshToken);
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private ApiException signupFailed() {
+        return new ApiException(HttpStatus.BAD_REQUEST, "Signup could not be completed");
+    }
+
+    private void ensureActive(User user, HttpStatus status) {
+        if (!user.isActive()) {
+            throw new ApiException(status, "Account is suspended");
+        }
     }
 }

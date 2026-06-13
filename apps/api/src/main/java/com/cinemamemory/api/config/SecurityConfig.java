@@ -4,8 +4,11 @@ import com.cinemamemory.api.auth.OAuth2LoginSuccessHandler;
 import com.cinemamemory.api.auth.OAuth2UserProvisionService;
 import com.cinemamemory.api.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.core.annotation.Order;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -32,16 +35,15 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.util.StringUtils;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@EnableConfigurationProperties(AppProperties.class)
 public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
     private static final List<String> PUBLIC_ENDPOINTS = List.of(
-            "/swagger-ui/**",
-            "/swagger-ui.html",
-            "/v3/api-docs/**",
             "/uploads/media/**",
             "POST /auth/signup",
             "POST /auth/login",
@@ -50,9 +52,6 @@ public class SecurityConfig {
             "GET /debug/version"
     );
     private static final RequestMatcher PUBLIC_API_REQUESTS = new OrRequestMatcher(
-            new AntPathRequestMatcher("/swagger-ui/**"),
-            new AntPathRequestMatcher("/swagger-ui.html"),
-            new AntPathRequestMatcher("/v3/api-docs/**"),
             new AntPathRequestMatcher("/uploads/media/**"),
             new AntPathRequestMatcher("/auth/signup", HttpMethod.POST.name()),
             new AntPathRequestMatcher("/auth/login", HttpMethod.POST.name()),
@@ -60,6 +59,12 @@ public class SecurityConfig {
             new AntPathRequestMatcher("/actuator/health", HttpMethod.GET.name()),
             new AntPathRequestMatcher("/debug/version", HttpMethod.GET.name())
     );
+
+    private final AppProperties properties;
+
+    public SecurityConfig(AppProperties properties) {
+        this.properties = properties;
+    }
 
     @Bean
     @Order(1)
@@ -108,6 +113,7 @@ public class SecurityConfig {
                         .requestMatchers(CorsUtils::isPreFlightRequest).permitAll()
                         .requestMatchers(PUBLIC_API_REQUESTS).permitAll()
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").hasRole("ADMIN")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
@@ -139,13 +145,32 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:3000", "https://*.vercel.app"));
+        configuration.setAllowedOrigins(allowedOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private List<String> allowedOrigins() {
+        Set<String> origins = new LinkedHashSet<>();
+        AppProperties.Security security = properties.security();
+        if (security != null && security.corsAllowedOrigins() != null) {
+            security.corsAllowedOrigins().stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .map(origin -> origin.replaceAll("/$", ""))
+                    .forEach(origins::add);
+        }
+
+        if (StringUtils.hasText(properties.frontendUrl())) {
+            origins.add(properties.frontendUrl().trim().replaceAll("/$", ""));
+        }
+
+        return List.copyOf(origins);
     }
 }

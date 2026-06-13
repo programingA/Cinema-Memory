@@ -3,6 +3,7 @@ package com.cinemamemory.api.admin;
 import com.cinemamemory.api.film.Film;
 import com.cinemamemory.api.user.User;
 import com.cinemamemory.api.user.UserRole;
+import com.cinemamemory.api.user.UserStatus;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 
@@ -13,6 +14,7 @@ public final class AdminDtos {
     public record AdminSummaryResponse(
             long userCount,
             long adminCount,
+            long suspendedCount,
             long filmCount,
             long sceneCount,
             long mediaCount
@@ -25,6 +27,7 @@ public final class AdminDtos {
             String displayName,
             String avatarUrl,
             String role,
+            String status,
             Instant createdAt
     ) {
         static AdminUserResponse from(User user) {
@@ -34,6 +37,7 @@ public final class AdminDtos {
                     user.getDisplayName(),
                     user.getAvatarUrl(),
                     user.getRole().name(),
+                    user.getStatus().name(),
                     user.getCreatedAt()
             );
         }
@@ -62,5 +66,8 @@ public final class AdminDtos {
     }
 
     public record UpdateUserRoleRequest(@NotNull UserRole role) {
+    }
+
+    public record UpdateUserStatusRequest(@NotNull UserStatus status) {
     }
 }

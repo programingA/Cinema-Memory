@@ -9,6 +9,7 @@ type Props = {
 };
 
 type SlideDirection = -1 | 1;
+type PreloadedMedia = HTMLImageElement | HTMLVideoElement;
 
 function isVideoMedia(url?: string) {
   if (!url) {
@@ -16,6 +17,10 @@ function isVideoMedia(url?: string) {
   }
 
   return url.startsWith("data:video/") || /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+}
+
+function cssBackgroundImage(url: string) {
+  return `url("${url.replace(/["\\\n\r\f]/g, "\\$&")}")`;
 }
 
 export function ProjectorScene({ scenes }: Props) {
@@ -26,10 +31,32 @@ export function ProjectorScene({ scenes }: Props) {
   const [slideDirection, setSlideDirection] = useState<SlideDirection>(1);
   const transitionStartTimerRef = useRef<number | null>(null);
   const transitionEndTimerRef = useRef<number | null>(null);
+  const preloadedMediaRef = useRef<Map<string, PreloadedMedia>>(new Map());
   const safeActiveIndex = scenes[activeIndex] ? activeIndex : 0;
   const activeScene = scenes[safeActiveIndex];
   const incomingScene = incomingIndex === null ? null : scenes[incomingIndex] ?? null;
   const progress = useMemo(() => `${safeActiveIndex + 1} / ${scenes.length}`, [safeActiveIndex, scenes.length]);
+  const activeMediaUrl = activeScene?.mediaUrls[0];
+  const activeMediaIsVideo = isVideoMedia(activeMediaUrl);
+  const adjacentMediaUrls = useMemo(() => {
+    if (scenes.length <= 1) {
+      return [];
+    }
+
+    const preloadIndexes = new Set<number>([
+      (safeActiveIndex - 1 + scenes.length) % scenes.length,
+      (safeActiveIndex + 1) % scenes.length
+    ]);
+
+    if (incomingIndex !== null) {
+      preloadIndexes.add((incomingIndex - 1 + scenes.length) % scenes.length);
+      preloadIndexes.add((incomingIndex + 1) % scenes.length);
+    }
+
+    return Array.from(preloadIndexes)
+      .map((index) => scenes[index]?.mediaUrls[0])
+      .filter((url): url is string => Boolean(url) && !/^(data:|blob:)/i.test(url));
+  }, [incomingIndex, safeActiveIndex, scenes]);
 
   const transitionToScene = useCallback((nextIndex: number, direction: SlideDirection = 1) => {
     if (scenes.length === 0 || nextIndex === safeActiveIndex) {
@@ -60,6 +87,7 @@ export function ProjectorScene({ scenes }: Props) {
   }, [safeActiveIndex, scenes.length]);
 
   useEffect(() => {
+    const preloadedMedia = preloadedMediaRef.current;
     return () => {
       if (transitionStartTimerRef.current) {
         window.clearTimeout(transitionStartTimerRef.current);
@@ -68,11 +96,57 @@ export function ProjectorScene({ scenes }: Props) {
       if (transitionEndTimerRef.current) {
         window.clearTimeout(transitionEndTimerRef.current);
       }
+
+      for (const media of preloadedMedia.values()) {
+        if (media instanceof HTMLVideoElement) {
+          media.pause();
+          media.removeAttribute("src");
+          media.load();
+        }
+      }
+      preloadedMedia.clear();
     };
   }, []);
 
   useEffect(() => {
-    if (!isAutoPlaying || scenes.length <= 1) {
+    for (const url of adjacentMediaUrls) {
+      if (preloadedMediaRef.current.has(url)) {
+        continue;
+      }
+
+      if (isVideoMedia(url)) {
+        const video = document.createElement("video");
+        video.preload = "auto";
+        video.muted = true;
+        video.playsInline = true;
+        video.src = url;
+        video.load();
+        preloadedMediaRef.current.set(url, video);
+        continue;
+      }
+
+      const image = new Image();
+      image.decoding = "async";
+      image.src = url;
+      preloadedMediaRef.current.set(url, image);
+    }
+
+    for (const [url, media] of preloadedMediaRef.current.entries()) {
+      if (adjacentMediaUrls.includes(url)) {
+        continue;
+      }
+
+      if (media instanceof HTMLVideoElement) {
+        media.pause();
+        media.removeAttribute("src");
+        media.load();
+      }
+      preloadedMediaRef.current.delete(url);
+    }
+  }, [adjacentMediaUrls]);
+
+  useEffect(() => {
+    if (!isAutoPlaying || scenes.length <= 1 || activeMediaIsVideo || incomingScene) {
       return;
     }
 
@@ -83,7 +157,7 @@ export function ProjectorScene({ scenes }: Props) {
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [isAutoPlaying, scenes.length, safeActiveIndex, transitionToScene]);
+  }, [activeMediaIsVideo, incomingScene, isAutoPlaying, scenes.length, safeActiveIndex, transitionToScene]);
 
   useEffect(() => {
     if (!isAutoPlaying) {
@@ -135,7 +209,15 @@ export function ProjectorScene({ scenes }: Props) {
     setIsAutoPlaying(false);
   }
 
-  function renderSceneMedia(scene: MemoryScene, isFullscreen: boolean) {
+  function handleFullscreenVideoEnded(scene: MemoryScene) {
+    if (!isAutoPlaying || incomingScene || scene.id !== activeScene.id || scenes.length <= 1) {
+      return;
+    }
+
+    transitionToScene((safeActiveIndex + 1) % scenes.length, 1);
+  }
+
+  function renderSceneMedia(scene: MemoryScene, isFullscreen: boolean, isActiveFullscreenMedia = false) {
     const mediaUrl = scene.mediaUrls[0];
     const isVideo = isVideoMedia(mediaUrl);
 
@@ -147,8 +229,10 @@ export function ProjectorScene({ scenes }: Props) {
           className="h-full w-full bg-black object-contain opacity-95"
           controls={!isFullscreen}
           muted={isFullscreen}
-          autoPlay={isFullscreen}
+          autoPlay={isActiveFullscreenMedia}
+          preload={isFullscreen ? "auto" : "metadata"}
           playsInline
+          onEnded={isActiveFullscreenMedia ? () => handleFullscreenVideoEnded(scene) : undefined}
         />
       );
     }
@@ -158,7 +242,7 @@ export function ProjectorScene({ scenes }: Props) {
         <div
           key={mediaUrl}
           className={`h-full w-full bg-center opacity-95 ${isFullscreen ? "bg-contain bg-no-repeat" : "bg-cover"}`}
-          style={{ backgroundImage: `url(${mediaUrl})` }}
+          style={{ backgroundImage: cssBackgroundImage(mediaUrl) }}
         />
       );
     }
@@ -333,11 +417,11 @@ export function ProjectorScene({ scenes }: Props) {
         <div className="fixed inset-0 z-[90] overflow-hidden bg-black">
           <div className="absolute inset-0 bg-stone-950">
             <div className={`absolute inset-0 ${slideTransitionClass} ${outgoingSlideClass}`}>
-              {renderSceneMedia(activeScene, true)}
+              {renderSceneMedia(activeScene, true, !incomingScene)}
             </div>
             {incomingScene && (
               <div className={`absolute inset-0 ${slideTransitionClass} ${incomingSlideClass}`}>
-                {renderSceneMedia(incomingScene, true)}
+                {renderSceneMedia(incomingScene, true, false)}
               </div>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/22 to-black/42" />

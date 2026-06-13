@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Clapperboard, Edit3, Film, Play, Plus, Search, ShieldCheck, Trash2, Video, X } from "lucide-react";
+import { AppDialog } from "@/components/AppDialog";
 import { getAccessToken, verifyAuthSession } from "@/lib/auth";
 import { deleteFilm as deleteFilmRequest, getFilms } from "@/lib/api";
 import type { Film as FilmItem } from "@/lib/types";
@@ -14,6 +15,10 @@ function isVideoMedia(url?: string) {
   }
 
   return url.startsWith("data:video/") || /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+}
+
+function cssBackgroundImage(url: string) {
+  return `url("${url.replace(/["\\\n\r\f]/g, "\\$&")}")`;
 }
 
 function getFilmSearchText(film: FilmItem) {
@@ -36,6 +41,8 @@ export function DashboardClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<FilmItem | null>(null);
+  const [isDeletingFilm, setIsDeletingFilm] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,17 +103,27 @@ export function DashboardClient() {
   );
   const isSearching = debouncedSearchQuery.length > 0;
 
-  async function deleteFilm(filmId: number) {
-    const ok = window.confirm("이 필름을 삭제할까요? 삭제하면 서버 데이터베이스에서 제거됩니다.");
-    if (!ok) {
+  function deleteFilm(filmId: number) {
+    const film = serverFilms.find((item) => item.id === filmId);
+    if (film) {
+      setDeleteTarget(film);
+    }
+  }
+
+  async function confirmDeleteFilm() {
+    if (!deleteTarget) {
       return;
     }
 
+    setIsDeletingFilm(true);
     try {
-      await deleteFilmRequest(getAccessToken(), filmId);
-      setServerFilms((current) => current.filter((film) => film.id !== filmId));
+      await deleteFilmRequest(getAccessToken(), deleteTarget.id);
+      setServerFilms((current) => current.filter((film) => film.id !== deleteTarget.id));
+      setDeleteTarget(null);
     } catch {
       setLoadError("The film could not be deleted from the server.");
+    } finally {
+      setIsDeletingFilm(false);
     }
   }
 
@@ -121,6 +138,7 @@ export function DashboardClient() {
   }
 
   return (
+    <>
     <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-10">
       <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -260,7 +278,7 @@ export function DashboardClient() {
                           {film.coverImageUrl && coverIsVideo ? (
                             <video src={film.coverImageUrl} className="h-full w-full object-cover opacity-80" muted playsInline />
                           ) : film.coverImageUrl ? (
-                            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${film.coverImageUrl})` }} />
+                            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: cssBackgroundImage(film.coverImageUrl) }} />
                           ) : (
                             <div className="grid h-full place-items-center text-stone-500">
                               <Film size={28} />
@@ -312,5 +330,22 @@ export function DashboardClient() {
         </div>
       </div>
     </main>
+
+    <AppDialog
+      open={Boolean(deleteTarget)}
+      title="필름을 삭제할까요?"
+      description={
+        <>
+          <span className="font-semibold text-white">{deleteTarget?.title}</span> 필름이 서버 데이터베이스에서 삭제됩니다.
+        </>
+      }
+      confirmLabel={isDeletingFilm ? "삭제 중..." : "삭제"}
+      cancelLabel="취소"
+      tone="danger"
+      isBusy={isDeletingFilm}
+      onConfirm={() => void confirmDeleteFilm()}
+      onClose={() => setDeleteTarget(null)}
+    />
+    </>
   );
 }

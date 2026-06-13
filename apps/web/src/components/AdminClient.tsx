@@ -3,26 +3,31 @@
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Clapperboard, Film, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import { Clapperboard, Film, RefreshCw, Search, ShieldCheck, Trash2, UserCheck, Users, UserX, X } from "lucide-react";
+import { AppDialog } from "@/components/AppDialog";
 import {
+  deleteAdminUser,
   getAdminFilms,
   getAdminSummary,
   getAdminUsers,
   isApiError,
-  updateAdminUserRole
+  updateAdminUserRole,
+  updateAdminUserStatus
 } from "@/lib/api";
 import { getAccessToken, verifyAuthSession } from "@/lib/auth";
-import type { AdminFilm, AdminSummary, AdminUser, UserRole } from "@/lib/types";
+import type { AdminFilm, AdminSummary, AdminUser, UserRole, UserStatus } from "@/lib/types";
 
 const EMPTY_SUMMARY: AdminSummary = {
   userCount: 0,
   adminCount: 0,
+  suspendedCount: 0,
   filmCount: 0,
   sceneCount: 0,
   mediaCount: 0
 };
 
 type UserRoleFilter = "ALL" | UserRole;
+type UserStatusFilter = "ALL" | UserStatus;
 type UserSearchField = "ALL" | "EMAIL" | "NAME";
 
 function formatDate(value: string) {
@@ -62,15 +67,18 @@ export function AdminClient() {
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [summary, setSummary] = useState<AdminSummary>(EMPTY_SUMMARY);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [films, setFilms] = useState<AdminFilm[]>([]);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [userRoleFilter, setUserRoleFilter] = useState<UserRoleFilter>("ALL");
+  const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>("ALL");
   const [userSearchField, setUserSearchField] = useState<UserSearchField>("ALL");
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [debouncedUserSearchQuery, setDebouncedUserSearchQuery] = useState("");
+  const [deleteTargetUser, setDeleteTargetUser] = useState<AdminUser | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   const latestFilms = useMemo(() => films.slice(0, 8), [films]);
   const filteredUsers = useMemo(() => {
@@ -78,6 +86,10 @@ export function AdminClient() {
 
     return users.filter((user) => {
       if (userRoleFilter !== "ALL" && user.role !== userRoleFilter) {
+        return false;
+      }
+
+      if (userStatusFilter !== "ALL" && user.status !== userStatusFilter) {
         return false;
       }
 
@@ -90,11 +102,11 @@ export function AdminClient() {
           ? [user.email]
           : userSearchField === "NAME"
             ? [user.displayName]
-            : [user.email, user.displayName, user.role];
+            : [user.email, user.displayName, user.role, user.status];
 
       return searchableValues.some((value) => value.toLowerCase().includes(normalizedQuery));
     });
-  }, [debouncedUserSearchQuery, userRoleFilter, userSearchField, users]);
+  }, [debouncedUserSearchQuery, userRoleFilter, userSearchField, userStatusFilter, users]);
 
   async function loadAdminData() {
     const token = getAccessToken();
@@ -123,14 +135,13 @@ export function AdminClient() {
         return;
       }
 
+      setCurrentUserEmail(me.email);
+
       if (!me.admin) {
-        setCurrentUserId(me.id);
         setError("Admin role is required.");
         setIsReady(true);
         return;
       }
-
-      setCurrentUserId(me.id);
 
       try {
         await loadAdminData();
@@ -174,7 +185,7 @@ export function AdminClient() {
   }
 
   async function changeRole(user: AdminUser, role: UserRole) {
-    if (user.role === role || user.id === currentUserId) {
+    if (user.role === role || user.email === currentUserEmail) {
       return;
     }
 
@@ -182,17 +193,59 @@ export function AdminClient() {
     setError("");
 
     try {
-      const updatedUser = await updateAdminUserRole(getAccessToken(), user.id, role);
-      const nextUsers = users.map((item) => (item.id === updatedUser.id ? updatedUser : item));
-      setUsers(nextUsers);
-      setSummary({
-        ...summary,
-        userCount: nextUsers.filter((item) => item.role === "USER").length,
-        adminCount: nextUsers.filter((item) => item.role === "ADMIN").length
-      });
+      await updateAdminUserRole(getAccessToken(), user.id, role);
+      await loadAdminData();
     } catch (roleError) {
       setError(errorMessage(roleError));
     } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
+  async function changeStatus(user: AdminUser) {
+    if (user.email === currentUserEmail) {
+      return;
+    }
+
+    const nextStatus: UserStatus = user.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+    setUpdatingUserId(user.id);
+    setError("");
+
+    try {
+      await updateAdminUserStatus(getAccessToken(), user.id, nextStatus);
+      await loadAdminData();
+    } catch (statusError) {
+      setError(errorMessage(statusError));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
+  function removeUserAccount(user: AdminUser) {
+    if (user.email === currentUserEmail) {
+      return;
+    }
+
+    setDeleteTargetUser(user);
+  }
+
+  async function confirmRemoveUserAccount() {
+    if (!deleteTargetUser) {
+      return;
+    }
+
+    setIsDeletingUser(true);
+    setUpdatingUserId(deleteTargetUser.id);
+    setError("");
+
+    try {
+      await deleteAdminUser(getAccessToken(), deleteTargetUser.id);
+      await loadAdminData();
+      setDeleteTargetUser(null);
+    } catch (deleteError) {
+      setError(errorMessage(deleteError));
+    } finally {
+      setIsDeletingUser(false);
       setUpdatingUserId(null);
     }
   }
@@ -222,6 +275,7 @@ export function AdminClient() {
   }
 
   return (
+    <>
     <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
         <section className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-7">
@@ -253,9 +307,10 @@ export function AdminClient() {
           </div>
         )}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <StatTile label="Regular Users" value={summary.userCount} icon={<Users size={18} />} />
           <StatTile label="Admins" value={summary.adminCount} icon={<ShieldCheck size={18} />} />
+          <StatTile label="Suspended" value={summary.suspendedCount} icon={<UserX size={18} />} />
           <StatTile label="Films" value={summary.filmCount} icon={<Film size={18} />} />
           <StatTile label="Scenes" value={summary.sceneCount} icon={<Clapperboard size={18} />} />
           <StatTile label="Media" value={summary.mediaCount} icon={<Film size={18} />} />
@@ -270,7 +325,7 @@ export function AdminClient() {
               </span>
             </div>
 
-            <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-stone-950/80 p-4 md:grid-cols-[auto_minmax(0,1fr)]">
+            <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-stone-950/80 p-4 xl:grid-cols-[auto_auto_minmax(0,1fr)]">
               <div className="flex flex-wrap gap-2">
                 {(["ALL", "USER", "ADMIN"] as const).map((role) => (
                   <button
@@ -284,6 +339,23 @@ export function AdminClient() {
                     }`}
                   >
                     {role === "ALL" ? "All" : role === "USER" ? "Users" : "Admins"}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(["ALL", "ACTIVE", "SUSPENDED"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setUserStatusFilter(status)}
+                    className={`h-10 rounded-md px-3 text-sm font-semibold transition ${
+                      userStatusFilter === status
+                        ? "bg-projector text-stone-950"
+                        : "border border-white/10 text-stone-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {status === "ALL" ? "Any status" : status === "ACTIVE" ? "Active" : "Suspended"}
                   </button>
                 ))}
               </div>
@@ -328,13 +400,14 @@ export function AdminClient() {
                   <tr>
                     <th className="px-4 py-3 font-semibold">User</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Joined</th>
-                    <th className="px-4 py-3 font-semibold">Action</th>
+                    <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10">
                   {filteredUsers.map((user) => {
-                    const isSelf = user.id === currentUserId;
+                    const isSelf = user.email === currentUserEmail;
                     const nextRole: UserRole = user.role === "ADMIN" ? "USER" : "ADMIN";
 
                     return (
@@ -354,23 +427,59 @@ export function AdminClient() {
                             {user.role}
                           </span>
                         </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${
+                              user.status === "ACTIVE"
+                                ? "bg-emerald-400/15 text-emerald-200"
+                                : "bg-red-400/15 text-red-200"
+                            }`}
+                          >
+                            {user.status}
+                          </span>
+                        </td>
                         <td className="px-4 py-4 text-stone-400">{formatDate(user.createdAt)}</td>
                         <td className="px-4 py-4">
-                          <button
-                            type="button"
-                            disabled={isSelf || updatingUserId === user.id}
-                            onClick={() => changeRole(user, nextRole)}
-                            className="inline-flex h-9 items-center rounded-md border border-white/10 px-3 text-xs font-semibold text-stone-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {isSelf ? "Current admin" : user.role === "ADMIN" ? "Set user" : "Set admin"}
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={isSelf || updatingUserId === user.id}
+                              onClick={() => changeRole(user, nextRole)}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-white/10 px-3 text-xs font-semibold text-stone-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <ShieldCheck size={13} />
+                              {isSelf ? "Current" : user.role === "ADMIN" ? "Set user" : "Set admin"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSelf || updatingUserId === user.id}
+                              onClick={() => changeStatus(user)}
+                              className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                user.status === "ACTIVE"
+                                  ? "border-amber-300/30 text-amber-200 hover:bg-amber-950/30"
+                                  : "border-emerald-300/30 text-emerald-200 hover:bg-emerald-950/30"
+                              }`}
+                            >
+                              {user.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
+                              {user.status === "ACTIVE" ? "Suspend" : "Reactivate"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSelf || updatingUserId === user.id}
+                              onClick={() => removeUserAccount(user)}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-400/30 px-3 text-xs font-semibold text-red-200 transition hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 size={13} />
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-stone-500">
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-stone-500">
                         No users match the current filters.
                       </td>
                     </tr>
@@ -417,5 +526,22 @@ export function AdminClient() {
         </section>
       </div>
     </main>
+
+    <AppDialog
+      open={Boolean(deleteTargetUser)}
+      title="계정을 삭제할까요?"
+      description={
+        <>
+          <span className="font-semibold text-white">{deleteTargetUser?.email}</span> 계정과 이 사용자의 필름, 장면, 미디어 데이터가 함께 삭제됩니다.
+        </>
+      }
+      confirmLabel={isDeletingUser ? "삭제 중..." : "삭제"}
+      cancelLabel="취소"
+      tone="danger"
+      isBusy={isDeletingUser}
+      onConfirm={() => void confirmRemoveUserAccount()}
+      onClose={() => setDeleteTargetUser(null)}
+    />
+    </>
   );
 }

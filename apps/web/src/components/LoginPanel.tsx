@@ -4,6 +4,7 @@ import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { KeyRound, Loader2, Mail, UserRound } from "lucide-react";
 import { isApiError, login, signup } from "@/lib/api";
 import { persistAuthSession } from "@/lib/auth";
+import { AppDialog } from "@/components/AppDialog";
 import { OAuthButtons } from "@/components/OAuthButtons";
 import type { AuthTokens } from "@/lib/types";
 
@@ -33,6 +34,19 @@ function dashboardRedirect() {
   window.location.assign("/dashboard");
 }
 
+function apiErrorMessage(error: unknown) {
+  if (!isApiError(error)) {
+    return "";
+  }
+
+  try {
+    const body = JSON.parse(error.body) as { message?: string };
+    return body.message ?? "";
+  } catch {
+    return error.body;
+  }
+}
+
 export function LoginPanel({ onSuccess }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -41,6 +55,7 @@ export function LoginPanel({ onSuccess }: Props) {
   const [message, setMessage] = useState("백엔드가 실행 중이면 이메일 로그인과 회원가입을 바로 테스트할 수 있습니다.");
   const [errors, setErrors] = useState<LoginErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuspendedDialogOpen, setIsSuspendedDialogOpen] = useState(false);
 
   function validate() {
     const nextErrors: LoginErrors = {};
@@ -74,16 +89,7 @@ export function LoginPanel({ onSuccess }: Props) {
       return login({ email: normalizedEmail, password });
     }
 
-    try {
-      return await signup({ email: normalizedEmail, password, displayName: displayName.trim() });
-    } catch (error) {
-      if (isApiError(error) && error.status === 409) {
-        setMessage("이미 가입된 이메일입니다. 같은 비밀번호로 로그인합니다.");
-        return login({ email: normalizedEmail, password });
-      }
-
-      throw error;
-    }
+    return signup({ email: normalizedEmail, password, displayName: displayName.trim() });
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -106,16 +112,33 @@ export function LoginPanel({ onSuccess }: Props) {
     try {
       tokens = await requestTokens(normalizedEmail);
     } catch (error) {
+      const suspendedLogin =
+        mode === "login" &&
+        isApiError(error) &&
+        error.status === 403 &&
+        apiErrorMessage(error).toLowerCase().includes("suspended");
       const invalidCredentials = isApiError(error) && error.status === 401;
-      const duplicatedSignup = mode === "signup" && isApiError(error) && error.status === 409;
+      const blockedSignup = mode === "signup" && isApiError(error) && error.status === 429;
+      const failedSignup = mode === "signup" && isApiError(error) && [400, 409].includes(error.status);
+
+      if (suspendedLogin) {
+        setErrors({
+          email: "계정이 정지되어 로그인할 수 없습니다.",
+          password: "계정 상태를 확인해주세요."
+        });
+        setMessage("계정이 정지되어 로그인할 수 없습니다.");
+        setIsSuspendedDialogOpen(true);
+        setIsSubmitting(false);
+        return;
+      }
 
       setErrors({
-        email: invalidCredentials || duplicatedSignup ? "이메일 또는 비밀번호가 올바르지 않습니다." : "인증 요청에 실패했습니다.",
-        password: invalidCredentials || duplicatedSignup ? "이메일 또는 비밀번호가 올바르지 않습니다." : undefined
+        email: invalidCredentials || failedSignup ? "이메일 또는 비밀번호가 올바르지 않습니다." : "인증 요청에 실패했습니다.",
+        password: invalidCredentials || failedSignup ? "이메일 또는 비밀번호가 올바르지 않습니다." : undefined
       });
       setMessage(
-        duplicatedSignup
-          ? "이미 가입된 이메일입니다. 기존 비밀번호로 로그인하세요."
+        blockedSignup
+          ? "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
           : "로그인 요청에 실패했습니다. 백엔드 실행 상태와 계정 정보를 확인하세요."
       );
       setIsSubmitting(false);
@@ -148,7 +171,8 @@ export function LoginPanel({ onSuccess }: Props) {
   }
 
   return (
-    <section className="relative overflow-hidden rounded-lg border border-white/10 bg-stone-950/95 p-5 shadow-reel backdrop-blur md:p-6">
+    <>
+      <section className="relative overflow-hidden rounded-lg border border-white/10 bg-stone-950/95 p-5 shadow-reel backdrop-blur md:p-6">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-velvet via-projector to-sky-300" />
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
@@ -249,6 +273,16 @@ export function LoginPanel({ onSuccess }: Props) {
         </div>
         <OAuthButtons />
       </div>
-    </section>
+      </section>
+
+      <AppDialog
+        open={isSuspendedDialogOpen}
+        title="로그인할 수 없습니다"
+        description="계정이 정지되어 로그인할 수 없습니다. 관리자에게 문의하거나 계정 상태를 확인해주세요."
+        confirmLabel="확인"
+        onConfirm={() => setIsSuspendedDialogOpen(false)}
+        onClose={() => setIsSuspendedDialogOpen(false)}
+      />
+    </>
   );
 }
